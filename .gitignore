@@ -1,0 +1,17 @@
+# 秘密情報（APIキー）。絶対にコミットしない
+.env
+.env.*
+
+# 元のPDF（再配布しない。URLは config/run.yaml に記録）
+data/source/
+
+# ドライランの集計出力（動作確認用）
+results/dryrun/
+
+# Python の自動生成ファイル
+__pycache__/
+*.pyc
+
+# 仮想環境
+.venv/
+venv/
