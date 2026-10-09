@@ -19,7 +19,7 @@ from itertools import combinations, product
 
 import yaml
 
-from common import ROOT, cost_usd, load_config, price_for, raw_path, read_jsonl, setup_stdout
+from common import ROOT, cost_usd, load_config, price_for, raw_path, read_jsonl, results_dir, setup_stdout
 
 REPORT_LINES: list[str] = []
 
@@ -143,17 +143,18 @@ def pct(num: int, den: int) -> str:
 def main() -> None:
     setup_stdout()
     ap = argparse.ArgumentParser()
+    ap.add_argument("--config", default="config/run.yaml", help="設定ファイル（省略時は config/run.yaml）")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--ground-truth", help="正答基準ファイル（省略時は run.yaml の ground_truth）")
     ap.add_argument("--tag", help="出力ファイル名の末尾に付ける名前。v1 なら summary_v1.csv になる")
     args = ap.parse_args()
 
-    cfg = load_config()
+    cfg = load_config(args.config)
     items: list[str] = cfg["task"]["items"]
     max_chars: int = cfg["task"]["max_value_chars"]
     patterns = list(cfg["prompts"].keys())
     records, latest, ok = load_ok_records(cfg, args.dry_run)
-    out_dir = ROOT / "results" / ("dryrun" if args.dry_run else "")
+    out_dir = results_dir(cfg) / ("dryrun" if args.dry_run else "")
     out_dir.mkdir(parents=True, exist_ok=True)
     gt_path = args.ground_truth or cfg.get("ground_truth")
     gt = load_ground_truth(gt_path)

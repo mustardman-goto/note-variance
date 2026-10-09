@@ -120,6 +120,7 @@ def run_trial(client, model_id: str, cfg: dict, prompt: str) -> dict:
 def main() -> None:
     setup_stdout()
     ap = argparse.ArgumentParser()
+    ap.add_argument("--config", default="config/run.yaml", help="設定ファイル（省略時は config/run.yaml）")
     ap.add_argument("--dry-run", action="store_true", help="お試し実行（別ファイルに保存）")
     ap.add_argument("--patterns", nargs="*", help="実行するパターン（省略時は全部）")
     ap.add_argument("--trials", type=int, help="1パターンあたりの回数（省略時は run.yaml の値）")
@@ -127,8 +128,8 @@ def main() -> None:
     if (args.patterns or args.trials) and not args.dry_run:
         sys.exit("エラー: --patterns / --trials は --dry-run と一緒に使ってください。本実行の条件は run.yaml で決めます。")
 
-    cfg = load_config()
-    config_sha = sha256(read_text("config/run.yaml"))
+    cfg = load_config(args.config)
+    config_sha = sha256(read_text(args.config))
     document = read_text(cfg["document"]["path"])
     document_sha = sha256(document)
     patterns = args.patterns or list(cfg["prompts"].keys())
@@ -143,7 +144,7 @@ def main() -> None:
         with open(manifest_path, "r", encoding="utf-8") as f:
             manifest = json.load(f)
         if manifest["config_sha256"] != config_sha or manifest["document_sha256"] != document_sha:
-            sys.exit("エラー: 前回の途中から run.yaml か対象文書が変わっています。条件が混ざるので止めました。\n"
+            sys.exit("エラー: 前回の途中から設定ファイルか対象文書が変わっています。条件が混ざるので止めました。\n"
                      "新しい検証なら run.yaml の run_id を変えてください。")
         model_id = manifest["model_id"]
         print(f"再開: モデルは前回と同じ {model_id}")
@@ -151,7 +152,7 @@ def main() -> None:
         model_id, all_ids = choose_model(client, cfg["model"])
         print(f"/v1/models から取得した {len(all_ids)} 件のうち {model_id} を選択")
         if not args.dry_run:
-            manifest = {"run_id": cfg["run_id"], "model_id": model_id, "models_listed": all_ids,
+            manifest = {"run_id": cfg["run_id"], "config_path": args.config, "model_id": model_id, "models_listed": all_ids,
                         "config_sha256": config_sha, "document_sha256": document_sha,
                         "started_at": now_iso()}
             manifest_path.parent.mkdir(parents=True, exist_ok=True)

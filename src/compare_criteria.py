@@ -2,13 +2,15 @@
 
 使い方:
     python src/compare_criteria.py config/ground_truth_v1.yaml config/ground_truth_v2.yaml
+    python src/compare_criteria.py A.yaml B.yaml --config config/run_xxx.yaml
 
 どちらの基準が正しいかは判断しない。判定が変わった箇所と正答率の変化を並べるだけ。
 """
+import argparse
 import sys
 
 from aggregate import failed_reasons, has_any, load_ground_truth, load_ok_records, pct
-from common import ROOT, load_config, read_text, setup_stdout, sha256
+from common import ROOT, load_config, read_text, results_dir, setup_stdout, sha256
 
 LINES: list[str] = []
 
@@ -24,15 +26,18 @@ def mark(ok: bool) -> str:
 
 def main() -> None:
     setup_stdout()
-    if len(sys.argv) != 3:
-        sys.exit(__doc__)
-    path_a, path_b = sys.argv[1], sys.argv[2]
+    ap = argparse.ArgumentParser()
+    ap.add_argument("criteria_a")
+    ap.add_argument("criteria_b")
+    ap.add_argument("--config", default="config/run.yaml", help="設定ファイル（省略時は config/run.yaml）")
+    args = ap.parse_args()
+    path_a, path_b = args.criteria_a, args.criteria_b
     gt_a, gt_b = load_ground_truth(path_a), load_ground_truth(path_b)
     for path, gt in ((path_a, gt_a), (path_b, gt_b)):
         if gt is None:
             sys.exit(f"エラー: {path} が無いか、confirmed: true になっていません。")
 
-    cfg = load_config()
+    cfg = load_config(args.config)
     items: list[str] = cfg["task"]["items"]
     patterns = list(cfg["prompts"].keys())
     _, latest, ok = load_ok_records(cfg)
@@ -102,7 +107,7 @@ def main() -> None:
                     num = sum(has_any(r["parsed"]["values"].get(i), group) for r in rows)
                     out(f"    {name} / {i} / {group[0]} など: {pct(num, len(rows))}")
 
-    out_path = ROOT / "results" / "criteria_diff.txt"
+    out_path = results_dir(cfg) / "criteria_diff.txt"
     with open(out_path, "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(LINES) + "\n")
     print(f"\n出力先: {out_path.relative_to(ROOT)}")

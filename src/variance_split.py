@@ -16,7 +16,7 @@ import sys
 from collections import Counter
 
 from aggregate import load_ok_records, normalize
-from common import ROOT, load_config, setup_stdout
+from common import ROOT, load_config, results_dir, setup_stdout
 
 LINES: list[str] = []
 ALL = "4項目すべて"
@@ -41,12 +41,14 @@ def mode_of(values: list) -> tuple[object, int, bool]:
 def main() -> None:
     setup_stdout()
     ap = argparse.ArgumentParser()
+    ap.add_argument("--config", default="config/run.yaml", help="設定ファイル（省略時は config/run.yaml）")
     ap.add_argument("--tag", default="v1", help="揺れの分類に使う responses_<tag>.csv")
     ap.add_argument("--count-item", help="語の出現回数を数える項目（5番の表）")
     ap.add_argument("--count-token", help="数える語（正規化後の値の中で数える）")
     args = ap.parse_args()
 
-    cfg = load_config()
+    cfg = load_config(args.config)
+    out_dir = results_dir(cfg)
     items: list[str] = cfg["task"]["items"]
     patterns = list(cfg["prompts"].keys())
     _, latest, ok = load_ok_records(cfg)
@@ -127,8 +129,8 @@ def main() -> None:
         out(f"  {s:<14}{frac(w, len(ok)):>18}{frac(b, n):>16}")
 
     # ---------- 4 ----------
-    resp_path = ROOT / "results" / f"responses_{args.tag}.csv"
-    out(f"\n■ 4. 揺れの分類の内訳（出典: results/{resp_path.name}。基準は項目ごとの全体の最頻値）")
+    resp_path = out_dir / f"responses_{args.tag}.csv"
+    out(f"\n■ 4. 揺れの分類の内訳（出典: {resp_path.relative_to(ROOT).as_posix()}。基準は項目ごとの全体の最頻値）")
     if not resp_path.exists():
         out(f"  {resp_path.name} がありません。先に aggregate.py --tag {args.tag} を実行してください。")
     else:
@@ -170,9 +172,9 @@ def main() -> None:
                 out(f"    {len(where):>2}件  {value}")
                 out(f"          {' '.join(where)}")
 
-    with open(ROOT / "results" / "variance_split.txt", "w", encoding="utf-8", newline="\n") as f:
+    with open(out_dir / "variance_split.txt", "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(LINES) + "\n")
-    print("\n出力先: results\\variance_split.txt")
+    print(f"\n出力先: {(out_dir / 'variance_split.txt').relative_to(ROOT)}")
 
 
 if __name__ == "__main__":

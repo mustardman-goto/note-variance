@@ -44,6 +44,11 @@ def sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def results_dir(cfg: dict) -> Path:
+    """集計結果の出力先。run.yaml に output_dir があればそこ、無ければ results/。"""
+    return ROOT / (cfg.get("output_dir") or "results")
+
+
 def raw_path(cfg: dict, dry_run: bool) -> Path:
     suffix = ".dryrun.jsonl" if dry_run else ".jsonl"
     return ROOT / "results" / "raw" / (cfg["run_id"] + suffix)
