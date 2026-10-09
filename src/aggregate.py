@@ -157,7 +157,11 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     gt_path = args.ground_truth or cfg.get("ground_truth")
     gt = load_ground_truth(gt_path)
-    suffix = f"_{args.tag}" if args.tag else ""
+    # --tag が無ければ基準ファイル名から決める（ground_truth_v2.yaml → v2）。
+    # 基準を変えて集計しても、別の基準で出した結果を上書きしないため
+    stem = (gt_path or "").replace("\\", "/").rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    tag = args.tag or (stem.split("ground_truth_", 1)[1] if stem.startswith("ground_truth_") else None)
+    suffix = f"_{tag}" if tag else ""
     summary_rows: list[list] = []
 
     def add(section, pattern, item, metric, num, den):

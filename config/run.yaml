@@ -53,7 +53,8 @@ task:
     - 応募時に提出する書類
 
 # 正答判定の基準ファイル（無ければ正答率と揺れの分類の一部は「未判定」になる）
-ground_truth: config/ground_truth.yaml
+# ファイル名の ground_truth_ より後ろ（v2 など）が、集計結果のファイル名の末尾に付く
+ground_truth: config/ground_truth_v2.yaml
 
 # ---- プロンプト ----
 # {document} の位置に対象文書の全文が入る。
