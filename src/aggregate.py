@@ -79,24 +79,46 @@ def parse_response(text: str, items: list[str], max_chars: int) -> dict:
     }
 
 
-def load_ground_truth(cfg: dict) -> dict | None:
-    path = ROOT / (cfg.get("ground_truth") or "")
-    if not cfg.get("ground_truth") or not path.exists():
+def load_ground_truth(rel_path: str | None) -> dict | None:
+    """正答基準を読む。rel_path は note-variance フォルダからの相対パス。"""
+    if not rel_path or not (ROOT / rel_path).exists():
         return None
-    with open(path, "r", encoding="utf-8") as f:
+    with open(ROOT / rel_path, "r", encoding="utf-8") as f:
         gt = yaml.safe_load(f)
     return gt if gt and gt.get("confirmed") else None
 
 
+def has_any(value: str | None, group: list[str]) -> bool:
+    """グループ内の語のどれか1つでも値に含まれるか（全角/半角・空白の違いは無視）。"""
+    return bool(value) and any(normalize(alt) in normalize(value) for alt in group)
+
+
+def failed_reasons(value: str | None, rule: dict) -> list[str]:
+    """正解条件のうち満たしていないものを列挙する。空リストなら正解。"""
+    if not value:
+        return ["値なし"]
+    reasons = [f"required {group} をどれも含まない"
+               for group in rule.get("required", []) if not has_any(value, group)]
+    reasons += [f"forbidden「{ng}」を含む"
+                for ng in rule.get("forbidden", []) if has_any(value, [ng])]
+    return reasons
+
+
 def is_correct(value: str | None, rule: dict) -> bool:
     """正解の条件：required の各グループから1つ以上を含み、forbidden を1つも含まない。"""
-    if not value:
-        return False
-    v = normalize(value)
-    for group in rule.get("required", []):
-        if not any(normalize(alt) in v for alt in group):
-            return False
-    return not any(normalize(ng) in v for ng in rule.get("forbidden", []))
+    return not failed_reasons(value, rule)
+
+
+def load_ok_records(cfg: dict, dry_run: bool = False) -> tuple[list[dict], dict, dict]:
+    """生ログを読み、(全記録, 試行ごとの最後の記録, そのうち成功したもの) を返す。"""
+    records = read_jsonl(raw_path(cfg, dry_run))
+    latest: dict[tuple[str, int], dict] = {}
+    for r in records:
+        latest[(r["pattern"], r["trial"])] = r
+    ok = {k: r for k, r in latest.items() if r["status"] == "ok"}
+    for r in ok.values():
+        r["parsed"] = parse_response(r["text"], cfg["task"]["items"], cfg["task"]["max_value_chars"])
+    return records, latest, ok
 
 
 def same(a: dict, b: dict, items: list[str], norm: bool) -> bool:
@@ -122,16 +144,20 @@ def main() -> None:
     setup_stdout()
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--ground-truth", help="正答基準ファイル（省略時は run.yaml の ground_truth）")
+    ap.add_argument("--tag", help="出力ファイル名の末尾に付ける名前。v1 なら summary_v1.csv になる")
     args = ap.parse_args()
 
     cfg = load_config()
     items: list[str] = cfg["task"]["items"]
     max_chars: int = cfg["task"]["max_value_chars"]
     patterns = list(cfg["prompts"].keys())
-    records = read_jsonl(raw_path(cfg, args.dry_run))
+    records, latest, ok = load_ok_records(cfg, args.dry_run)
     out_dir = ROOT / "results" / ("dryrun" if args.dry_run else "")
     out_dir.mkdir(parents=True, exist_ok=True)
-    gt = load_ground_truth(cfg)
+    gt_path = args.ground_truth or cfg.get("ground_truth")
+    gt = load_ground_truth(gt_path)
+    suffix = f"_{args.tag}" if args.tag else ""
     summary_rows: list[list] = []
 
     def add(section, pattern, item, metric, num, den):
@@ -143,12 +169,6 @@ def main() -> None:
         return
 
     # ---- 試行ごとに最後の記録を採用する（失敗→再開で成功した場合は成功を採用） ----
-    latest: dict[tuple[str, int], dict] = {}
-    for r in records:
-        latest[(r["pattern"], r["trial"])] = r
-    ok = {k: r for k, r in latest.items() if r["status"] == "ok"}
-    for r in ok.values():
-        r["parsed"] = parse_response(r["text"], items, max_chars)
     by_pattern = {p: [ok[k] for k in sorted(ok) if k[0] == p] for p in patterns}
     by_pattern = {p: rs for p, rs in by_pattern.items() if rs or any(k[0] == p for k in latest)}
     all_ok = [r for rs in by_pattern.values() for r in rs]
@@ -159,6 +179,7 @@ def main() -> None:
     out("=" * 72)
     out("\n■ 0. 実行条件（ログから集計）")
     out(f"  対象文書      : {cfg['document']['path']}")
+    out(f"  正答基準      : {gt_path}" + ("" if gt is not None else "（未確定または無し）"))
     out(f"  モデルID      : 要求 {sorted({r['model_requested'] for r in records})} / "
         f"応答 {sorted({r['model_returned'] for r in all_ok})}")
     out(f"  temperature   : {sorted({str(r['temperature']) for r in records})}（API に送った値。None は未送信）")
@@ -267,6 +288,15 @@ def main() -> None:
             add("4.正答率", p, "", "正答率_4項目すべて", num, len(rs))
             out(f"  {p:4} " + " ".join(f"{c:>14}" for c in cells))
 
+        # optional：基準ファイルにあるときだけ出す。正誤の判定には使わない
+        if any(gt["items"][i].get("optional") for i in items):
+            out("\n  [参考] optional の語を含む出力の割合（正誤の判定には使っていない）")
+            for i in items:
+                for group in gt["items"][i].get("optional", []):
+                    num = sum(has_any(r["parsed"]["values"].get(i), group) for r in all_ok)
+                    out(f"    {i} / {group[0]} など: {pct(num, len(all_ok))}")
+                    add("4b.optional含有率(参考)", "全体", i, group[0], num, len(all_ok))
+
     # ============ 5. 揺れの分類 ============
     out("\n■ 5. 揺れた箇所の分類（単位：出力×項目。基準は項目ごとの最頻値）")
     out("  一致＝最頻値と一字一句同じ / 表記のゆれ＝正規化すれば同じ / 情報量のゆれ＝違うが正解条件は満たす")
@@ -311,7 +341,7 @@ def main() -> None:
 
     # ============ ファイル出力（Excel で開けるよう BOM 付き UTF-8） ============
     def write_csv(name: str, header: list, rows: list) -> None:
-        with open(out_dir / name, "w", encoding="utf-8-sig", newline="") as f:
+        with open(out_dir / name.replace(".csv", suffix + ".csv"), "w", encoding="utf-8-sig", newline="") as f:
             w = csv.writer(f)
             w.writerow(header)
             w.writerows(rows)
@@ -339,8 +369,9 @@ def main() -> None:
         header += [i, f"{i}_字数", f"{i}_正誤", f"{i}_分類"]
     write_csv("responses.csv", header + ["出力全文またはエラー"], resp_rows)
 
-    out(f"\n出力先: {out_dir.relative_to(ROOT)}\\ （summary.csv / responses.csv / variants.csv / report.txt）")
-    with open(out_dir / "report.txt", "w", encoding="utf-8", newline="\n") as f:
+    out(f"\n出力先: {out_dir.relative_to(ROOT)}\\ （summary{suffix}.csv / responses{suffix}.csv / "
+        f"variants{suffix}.csv / report{suffix}.txt）")
+    with open(out_dir / f"report{suffix}.txt", "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(REPORT_LINES) + "\n")
 
 
