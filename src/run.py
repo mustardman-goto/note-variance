@@ -180,6 +180,8 @@ def main() -> None:
         record = {
             "run_id": cfg["run_id"], "dry_run": args.dry_run,
             "pattern": pattern, "trial": trial,
+            # 条件形式の設定（conditions）では条件IDを別に残す。pattern は従来の集計との互換のため同じ値
+            **({"condition_id": pattern} if "conditions" in cfg else {}),
             "ts_start": ts_start, "ts_end": now_iso(),
             "model_requested": model_id,
             "temperature": cfg["model"].get("temperature"),

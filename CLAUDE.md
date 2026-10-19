@@ -70,6 +70,15 @@ cd $HOME\fde-practice\note-variance; .\.venv\Scripts\python.exe src\aggregate.py
 - `src/compare_criteria.py` … 2つの正答基準の判定を比べる
 - `src/variance_split.py` … 揺れをパターン内／パターン間に分ける
 - `src/extract_pdf.py` … PDF → テキスト
+- `src/extract_html.py` … 保存した HTML → 本文テキスト（範囲の指定は run.yaml の `material` にコメントで残す）
+- `src/abstention_split.py` … 棄権の検証（2026-10-16_abstention〜）の集計。棄権率・でっち上げ率・誤棄権率・
+  A/B/C/D・条件内／条件間 → `variance_split_<tag>.txt`、`classified_<tag>.csv`、`need_review_<tag>.csv`
+- 設定の形式は2つ。従来の `prompts`（パターンごとに全文）と、`prompt.body`＋`conditions`（本文1つに
+  条件ごとの差し込み文）。後者は `common.expand_conditions` が前者の形に読み替える
+- `config/ground_truth_abstention_v1.yaml` … 2026-10-16_abstention の正答基準。`stated_in_source`、
+  `abstention_words`（棄権語。値全体が一致したときだけ abstain_plain）、`abstention_reference_words`
+  （参照先を示す語。含めば abstain_reference）、`forbidden_patterns`（正規表現）を持つ。
+  確定した7つの判断はファイル冒頭のコメントにある
 - `results/raw/<run_id>.manifest.json` … 本実行の開始時に選んだモデルIDと設定のハッシュ
 - `results/`（Haiku）、`results/2026w41-sonnet/`（Sonnet）… 集計結果。出力先は設定の `output_dir`
 - `prediction.md` … 実行前に書いた予想

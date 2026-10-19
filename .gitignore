@@ -7,6 +7,7 @@ data/source/
 
 # ドライランの集計出力（動作確認用）
 results/dryrun/
+results/*/dryrun/
 
 # Python の自動生成ファイル
 __pycache__/

@@ -55,7 +55,7 @@ def parse_response(text: str, items: list[str], max_chars: int) -> dict:
                 break
         else:
             unlabeled.append(ln)
-    lines_ok = len(lines) == 4
+    lines_ok = len(lines) == len(items)   # 行数＝項目数（2026w41 は4、2026-10-16_abstention は6）
     labels_ok = labeled_lines == len(lines) and set(values) == set(items)
     # ラベルだけ書き換えられた行の救済：指定外ラベルの行が1つ、欠けた項目も1つなら、
     # その行の値をその項目の値として扱う（ラベル違反は labels_ok=False のまま数える）
@@ -93,19 +93,78 @@ def has_any(value: str | None, group: list[str]) -> bool:
     return bool(value) and any(normalize(alt) in normalize(value) for alt in group)
 
 
+def normalize_for_match(value: str) -> str:
+    """forbidden_patterns（正規表現）を当てる前の正規化。NFKC だけを行う。
+    全角数字・全角英字・全角記号は半角になる（「１０００円」→「1000円」）。
+    空白は消さない（パターン側で \\s* と書いて吸収する）。桁区切りのカンマも消さない。"""
+    return unicodedata.normalize("NFKC", value)
+
+
+def forbidden_pattern_hits(value: str | None, rule: dict) -> list[str]:
+    """forbidden_patterns のうち、値に当たったパターン（2026-10-16_abstention から）。
+    判定ルール:
+      - 照合する範囲は、その項目のラベルの行のコロンより後ろ（値）だけ。ほかの行は見ない
+      - 値を normalize_for_match で正規化してから re.search で探す（部分一致。位置は問わない）
+      - 1つでも当たれば forbidden と同じく不正解。棄権語を同時に含んでいても不正解
+    """
+    if not value:
+        return []
+    v = normalize_for_match(value)
+    return [p for p in rule.get("forbidden_patterns", []) if re.search(p, v)]
+
+
+ABSTENTION_STRIP = "「」『』\"'"
+
+
+def abstention_hits(value: str | None, words: list[str]) -> list[str]:
+    """値に含まれる棄権語。棄権語のリストは正答基準ファイル（abstention_words）から渡す。
+    正規化は normalize（NFKC・空白を消す・波ダッシュ・文末の句点）を値と語の両方に行い、部分一致で探す。"""
+    if not value:
+        return []
+    v = normalize(value)
+    return [w for w in words if normalize(w) in v]
+
+
+def is_whole_abstention(value: str | None, words: list[str]) -> bool:
+    """値全体が棄権語そのものか。normalize のあと、かぎ括弧・引用符を消してから完全一致で比べる。"""
+    if not value:
+        return False
+    v = normalize(value).strip(ABSTENTION_STRIP).rstrip("。.")
+    return any(v == normalize(w) for w in words)
+
+
+def abstention_kind(value: str | None, plain: list[str], reference: list[str]) -> str | None:
+    """棄権の内訳（2026-10-16_abstention の正答基準の判断4・5）。
+      "plain"    : 値全体が棄権語（plain）のどれかと一致（is_whole_abstention）。語の一部に含むだけでは数えない
+      "reference": plain でなく、参照先を示す語（reference）のどれかを含む（abstention_hits。部分一致）
+      None       : どちらでもない
+    forbidden_patterns との優先順位はここでは見ない（呼び出し側で、当たれば不正解／でっち上げにする）。"""
+    if is_whole_abstention(value, plain):
+        return "plain"
+    if abstention_hits(value, reference):
+        return "reference"
+    return None
+
+
 def failed_reasons(value: str | None, rule: dict) -> list[str]:
-    """正解条件のうち満たしていないものを列挙する。空リストなら正解。"""
+    """正解条件のうち満たしていないものを列挙する。空リストなら正解。
+    記載なし項目（abstention を持つ項目）は、棄権（abstention_kind が plain か reference）であることが正解条件。"""
     if not value:
         return ["値なし"]
     reasons = [f"required {group} をどれも含まない"
                for group in rule.get("required", []) if not has_any(value, group)]
+    if "abstention" in rule and abstention_kind(
+            value, rule["abstention"]["plain"], rule["abstention"]["reference"]) is None:
+        reasons.append("棄権になっていない（値全体が棄権語でも、参照先を示す語を含むものでもない）")
     reasons += [f"forbidden「{ng}」を含む"
                 for ng in rule.get("forbidden", []) if has_any(value, [ng])]
+    reasons += [f"forbidden_patterns「{p}」に当たる" for p in forbidden_pattern_hits(value, rule)]
     return reasons
 
 
 def is_correct(value: str | None, rule: dict) -> bool:
-    """正解の条件：required の各グループから1つ以上を含み、forbidden を1つも含まない。"""
+    """正解の条件：required の各グループから1つ以上を含み、forbidden を1つも含まず、
+    forbidden_patterns に1つも当たらない。"""
     return not failed_reasons(value, rule)
 
 
@@ -214,8 +273,9 @@ def main() -> None:
         return
 
     # ============ 1. フォーマット遵守率 ============
-    out("\n■ 1. フォーマット遵守率（4行・指定ラベル・各値1～%d字）" % max_chars)
-    out(f"  {'':4} {'遵守':>16} {'4行':>16} {'ラベル':>16} {'字数':>16}")
+    n_items = len(items)
+    out(f"\n■ 1. フォーマット遵守率（{n_items}行・指定ラベル・各値1～{max_chars}字）")
+    out(f"  {'':4} {'遵守':>16} {f'{n_items}行':>16} {'ラベル':>16} {'字数':>16}")
     for p, rs in list(by_pattern.items()) + [("全体", all_ok)]:
         cells = []
         for key in ("format_ok", "lines_ok", "labels_ok", "len_ok"):
@@ -247,7 +307,7 @@ def main() -> None:
     out("        出力の揺れ＝同じプロンプトどうしのペア / 入力の揺れ＝違うプロンプトどうしのペア")
     out("        一致率が低いほど揺れが大きい。")
     out(f"\n  {'対象':22} {'':10} {'同一パターン内（出力の揺れ）':>22} {'パターン間（入力の揺れ）':>22} {'差':>8}")
-    for label, scope in [("4項目すべて", items)] + [(i, [i]) for i in items]:
+    for label, scope in [(f"{len(items)}項目すべて", items)] + [(i, [i]) for i in items]:
         for norm, nlabel in ((False, "原文"), (True, "正規化後")):
             wn, wd = pair_rate(all_within, scope, norm)
             bn, bd = pair_rate(all_between, scope, norm)
@@ -258,7 +318,7 @@ def main() -> None:
             add("3.パターン間一致率", "全体", item_name, f"ペア一致率_{nlabel}", bn, bd)
     out("  ※差 = 同一パターン内 − パターン間。プラスが大きいほど「プロンプトを変えた影響」が大きい。")
 
-    out("\n  [内訳] 同一パターン内の一致率（4項目すべて）と、出力の種類数")
+    out(f"\n  [内訳] 同一パターン内の一致率（{len(items)}項目すべて）と、出力の種類数")
     for p, prs in within_pairs.items():
         rn, rd = pair_rate(prs, items, False)
         nn, nd = pair_rate(prs, items, True)
@@ -266,7 +326,7 @@ def main() -> None:
         out(f"    {p}: 原文 {pct(rn, rd)}  正規化後 {pct(nn, nd)}  種類数 {kinds}/{len(by_pattern[p])}")
         add("2.同一パターン内一致率", p, "", "ペア一致率_原文", rn, rd)
         add("2.同一パターン内一致率", p, "", "ペア一致率_正規化後", nn, nd)
-    out("\n  [内訳] パターン間の一致率（4項目すべて）")
+    out(f"\n  [内訳] パターン間の一致率（{len(items)}項目すべて）")
     for (p, q), prs in between_pairs.items():
         rn, rd = pair_rate(prs, items, False)
         nn, nd = pair_rate(prs, items, True)
@@ -281,7 +341,7 @@ def main() -> None:
     else:
         for r in all_ok:
             r["correct"] = {i: is_correct(r["parsed"]["values"].get(i), gt["items"][i]) for i in items}
-        out(f"  {'':4} " + " ".join(f"{i[:9]:>14}" for i in items) + f" {'4項目すべて':>14}")
+        out(f"  {'':4} " + " ".join(f"{i[:9]:>14}" for i in items) + f" {f'{len(items)}項目すべて':>14}")
         for p, rs in list(by_pattern.items()) + [("全体", all_ok)]:
             cells = []
             for i in items:
@@ -290,7 +350,7 @@ def main() -> None:
                 add("4.正答率", p, i, "正答率", num, len(rs))
             num = sum(all(r["correct"].values()) for r in rs)
             cells.append(pct(num, len(rs)))
-            add("4.正答率", p, "", "正答率_4項目すべて", num, len(rs))
+            add("4.正答率", p, "", f"正答率_{len(items)}項目すべて", num, len(rs))
             out(f"  {p:4} " + " ".join(f"{c:>14}" for c in cells))
 
         # optional：基準ファイルにあるときだけ出す。正誤の判定には使わない
@@ -369,7 +429,7 @@ def main() -> None:
             row += [""] * (4 + 4 * len(items)) + [f"{r['error']['type']}: {r['error']['message']}"]
         resp_rows.append(row)
     header = ["パターン", "試行", "状態", "開始時刻", "モデルID", "temperature", "入力トークン",
-              "出力トークン", "秒", "API呼び出し回数", "遵守", "4行", "ラベル", "字数"]
+              "出力トークン", "秒", "API呼び出し回数", "遵守", f"{len(items)}行", "ラベル", "字数"]
     for i in items:
         header += [i, f"{i}_字数", f"{i}_正誤", f"{i}_分類"]
     write_csv("responses.csv", header + ["出力全文またはエラー"], resp_rows)

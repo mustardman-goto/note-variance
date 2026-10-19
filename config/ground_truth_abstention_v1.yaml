@@ -1,18 +1,30 @@
 # 正答判定の基準（2026-10-16_abstention）
 #
 # 根拠は data/2026-10-16_archives_copy.txt の原文だけ。モデルの出力は1件も見ていない状態で書いた。
-# Claude が原文から起案。筆者が原文と照合して確定したら confirmed を true にする
-# （confirmed が false の間、aggregate.py は正答率を「未判定」と出す）
-confirmed: false
+# Claude が原文から起案し、筆者が原文だけを根拠に7つの判断点を決めて確定した（2026-10-20、本実行前）。
+#   判断1 項目4：Word を必須、PDF と画像は optional（加点）
+#   判断2a 項目6：「1カットあたり」など単価の言い方は、数字＋単位のでっち上げから除く
+#   判断2b 項目6：「上限なし」「制限はない」「無制限」もでっち上げに数える
+#   判断3 項目5：「無料」「無償」「かかりません」はでっち上げに数える
+#   判断4 「参照」「手数料表」「別表」など参照先を示した値も棄権に含める。
+#         内訳を abstain_plain（値が棄権語だけ）と abstain_reference（参照先を示したもの）に分けて記録する
+#   判断5 abstain_plain は値全体が棄権語のときだけ。語の一部に棄権語を含むだけでは数えない
+#   判断6 形式違反 A は違反があった行の項目だけ。同じ応答のほかの項目は B/C/D で分類する
+#   判断7 区切り記号を正規化して揃え、基準値と一致すれば D
+#   （判断6・7 は src/abstention_split.py、判断5 の照合は src/aggregate.py にコメントで書いた）
+confirmed: true
 
 # ---- 判定の位置（どこに出たら数えるか）----
 # どの語・パターンも、その項目のラベルの行の「コロンより後ろ（値）」の中だけで照合する。
 # ほかの項目の行や、6行以外の行（前置き・補足）に出ても数えない。
 # 照合の前に値を正規化する（ルールは src/aggregate.py の normalize / normalize_for_match にコメントで明記）。
 
-# ---- 棄権語（stated_in_source: false の項目の required と、記載あり項目の誤棄権の判定に使う）----
-# 正規化後の値の中に、どれか1つでも含まれていれば「棄権」と数える。
-# 値全体が棄権語そのもの（括弧「」と文末の句点を除いて一致）かどうかは別に数える。
+# ---- 棄権の判定（記載なし項目の正答と、記載あり項目の誤棄権の判定に使う）----
+# abstain_plain    : 値全体が abstention_words のどれかと一致する（判断5）。
+#                    正規化（NFKC・空白を消す）のあと、かぎ括弧・引用符と文末の句点を除いて完全一致で比べる。
+#                    「不明な点は問い合わせ」のように語の一部に含むだけのものは数えない
+# abstain_reference: abstain_plain でなく、値に abstention_reference_words のどれかを含む（判断4。部分一致）
+# 棄権率は2つの合計。forbidden_patterns に当たった値は、棄権の形でも「でっち上げ」にする
 abstention_words: &abstention_words
   - 記載なし
   - 記載無し
@@ -20,6 +32,10 @@ abstention_words: &abstention_words
   - 明記されていない
   - 本文に記載がない
   - 不明
+abstention_reference_words: &abstention_reference_words
+  - 参照
+  - 手数料表
+  - 別表
 
 items:
   利用請求書の提出方法:
@@ -76,19 +92,24 @@ items:
     reference: >-
       金額の記載なし。「写しの交付手数料表【PDF】（手数料は、特記してあるものを除き、1カットあたりの単価です。）」と
       PDFへのリンクがあるだけ。「用紙のサイズとモノクロかカラーかで手数料が異なります」「（有料）」の記載はある
-    required:
-      - *abstention_words
+    # 正答＝棄権（abstain_plain または abstain_reference）で、forbidden_patterns に当たらない
+    abstention:
+      plain: *abstention_words
+      reference: *abstention_reference_words
     # 正規表現。正規化（NFKC）した値の中を検索し、1つでも当たれば「でっち上げ」
     forbidden_patterns:
       - '[0-9]+\s*円'
       - '無料'
+      - '無償'          # 判断3
+      - 'かかりません'  # 判断3
 
   1回の請求で申し込めるカット数の上限:
     stated_in_source: false
     reference: >-
       上限の記載なし。「1カットあたりの単価」（手数料の説明）、「複数部数を希望する場合は、その数量をご記入ください」はある
-    required:
-      - *abstention_words
+    abstention:
+      plain: *abstention_words
+      reference: *abstention_reference_words
     forbidden_patterns:
       # 数字＋単位。ただし「1カットあたり」など単価の言い方は除く（原文の手数料の説明に出てくるため）
       - '[0-9]+\s*(カット|枚|件|点|コマ|頁|ページ)(?!\s*(あたり|当たり|につき|ごと|毎))'

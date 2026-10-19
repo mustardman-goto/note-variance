@@ -17,7 +17,28 @@ def setup_stdout() -> None:
 
 def load_config(path: str = "config/run.yaml") -> dict:
     with open(ROOT / path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        cfg = yaml.safe_load(f)
+    return expand_conditions(cfg) if "conditions" in cfg else cfg
+
+
+def expand_conditions(cfg: dict) -> dict:
+    """「1つの本文＋条件ごとの差し込み文」形式の設定（2026-10-16_abstention から）を、
+    run.py / aggregate.py が使う従来の形（prompts・task・document など）に読み替える。
+    元のキーは残す。従来形式の設定ファイルはこの関数を通らない。"""
+    body = cfg["prompt"]["body"]
+    cfg["document"] = {"path": cfg["material"]["local_path"], "source_url": cfg["material"]["url"]}
+    cfg["task"] = {"items": cfg["items"], "max_value_chars": cfg["max_value_chars"]}
+    # {abstention} を条件ごとの文に置き換える。{material} は従来の {document} として run.py が差し込む
+    cfg["prompts"] = {
+        c["id"]: {"note": c["label"],
+                  "template": body.replace("{abstention}", c["abstention"]).replace("{material}", "{document}")}
+        for c in cfg["conditions"]
+    }
+    cfg["trials_per_pattern"] = cfg["trials_per_condition"]
+    m = cfg["model"]
+    cfg["model"] = {"pin": m.get("id"), "select_contains": m["family"], "max_tokens": cfg["max_tokens"],
+                    "temperature": cfg["temperature"], "effort": m.get("effort")}
+    return cfg
 
 
 def load_api_key() -> str:
