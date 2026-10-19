@@ -1,112 +1,85 @@
 # ============================================================
-# 検証設定。毎週ここだけ書き換える（src/ のコードは触らない）
+# 検証設定（2026-10-16_abstention：棄権指示の有無で、記載のない項目への答え方が変わるか）
+# 2026w41 の設定は Git の履歴（755ff22 以前の config/run.yaml）に残っている
 # ============================================================
 
-# 実行の名前。results/raw/<run_id>.jsonl に保存される。
-# 週が変わったら必ず変える（同じ名前だと前回の続きとして再開される）
-run_id: 2026w41-bousai-koboyoryo
-
-# ---- 対象文書 ----
-document:
-  path: data/02_koboyoryo_R7vol1.txt          # src/extract_pdf.py で作ったテキスト
-  source_pdf: data/source/02_koboyoryo_R7vol1.pdf
-  source_url: https://www.bousai.go.jp/bousai_taisakuhojo/pdf/02_koboyoryo_R7vol1.pdf
-
-# ---- モデル ----
+run_id: "2026-10-16_abstention"
+material:
+  url: "https://www.archives.go.jp/guide/copy.html"
+  # 指示文の materials/ は、このリポジトリの既存の置き場所 data/ に読み替えた
+  local_path: "data/2026-10-16_archives_copy.txt"
+  # 実際に取得した日時（2026-10-17 11:50 JST）。取得は1回だけ。元の HTML は data/source/（コミットしない）
+  fetched_at: "2026-10-17"
+  source_html: "data/source/2026-10-16_archives_copy/copy.html"
+  # 本文の切り出し方: src/extract_html.py --start-class copy --stop-id FooterLayout --skip-class ikari
 model:
-  # 起動時に /v1/models の一覧を取得し、ID にこの文字列を含むもののうち
-  # 公開日（created_at）が最も新しいものを使う。例: opus / sonnet / haiku
-  select_contains: haiku
-  # 特定のIDに固定したいときだけ書く（一覧に存在するかは起動時に確認する）。通常は null
-  pin: null
-  max_tokens: 16000
-  # API に送る temperature。null にすると送らない（＝API側の既定に任せる）。
-  # モデルによっては送るとエラーになる。実際に送ったかどうかは 1件ごとにログに残る
-  temperature: 1.0
-  # 思考の深さ（low / medium / high / xhigh / max）。null は送らない（＝モデルの既定）
-  effort: null
+  id: null            # 起動時に /v1/models から取得して埋める。決め打ち禁止
+  family: "claude-sonnet"
+temperature: 1.0      # 1本目・2本目と同一
+max_tokens: 400
+trials_per_condition: 20
+items:                # この順序も固定
+  - "利用請求書の提出方法"
+  - "手数料の支払方法"
+  - "成果物の送付費用の負担者"
+  - "利用請求書の様式のファイル形式"
+  - "写しの交付手数料の金額"
+  - "1回の請求で申し込めるカット数の上限"
+prompt:
+  body: |
+    以下の文書を読み、次の6項目を抽出してください。
 
-# ---- 試行回数 ----
-trials_per_pattern: 10
+    【項目】
+    1. 利用請求書の提出方法
+    2. 手数料の支払方法
+    3. 成果物の送付費用の負担者
+    4. 利用請求書の様式のファイル形式
+    5. 写しの交付手数料の金額
+    6. 1回の請求で申し込めるカット数の上限
 
-# ---- リトライ（レート制限・サーバーエラー・通信エラーのとき） ----
+    【出力形式】
+    「項目名: 値」の形式で6行だけ出力してください。
+    各行の値は40字以内。前置きや補足の文章は書かないでください。
+    {abstention}
+
+    【文書】
+    {material}
+  # {abstention} の位置は3条件で共通。ここ以外は1文字も変えないこと
+conditions:
+  - id: "C0"
+    label: "棄権指示なし"
+    abstention: ""
+  - id: "C1"
+    label: "記載なしと書くよう指示"
+    abstention: "文書に記載がない項目は、値のかわりに「記載なし」とだけ書いてください。"
+  - id: "C2"
+    label: "推測禁止を明示"
+    abstention: "推測で補わないでください。文書に根拠がある場合のみ値を書き、根拠がない場合は値のかわりに「記載なし」とだけ書いてください。"
+output:
+  # 生ログはこのリポジトリの既存の形 results/raw/<run_id>.jsonl に1件ずつ追記する
+  # （指示文の results/raw/2026-10-16_abstention/ から読み替え）。manifest も同じ場所
+  raw_path: "results/raw/2026-10-16_abstention.jsonl"
+  append_per_call: true
+
+# ---- ここから下は、ハーネスが動くために必要な設定（指示文に無いもの） ----
+
+# 集計結果の出力先（既存の results/ と混ざらないよう run_id ごとに分ける）
+output_dir: results/2026-10-16_abstention
+
+# 正答判定の基準（ファイル名の ground_truth_ より後ろが集計結果のファイル名の末尾に付く）
+ground_truth: config/ground_truth_abstention_v1.yaml
+
+# 形式検査に使う値の字数上限（プロンプトの「各行の値は40字以内」と同じ数）
+max_value_chars: 40
+
+# リトライ（レート制限・サーバーエラー・通信エラーのとき）。指数バックオフ
 retry:
-  max_attempts: 6        # 1試行あたり最大何回まで API を呼ぶか
-  base_delay_sec: 2      # 待ち時間 = base × 2^(回数-1) ＋ ゆらぎ
+  max_attempts: 6
+  base_delay_sec: 2
   max_delay_sec: 60
 
-# ---- コスト試算用の単価（USD / 100万トークン）。料金表から手で転記 ----
-# モデルIDが左の文字列で始まるものに適用。該当なしならコストは「不明」と出す
+# コスト試算用の単価（USD / 100万トークン）。2026w41 の設定から転記
 pricing_usd_per_mtok:
   claude-opus-5-5:   {input: 4.00, output: 20.00}
   claude-sonnet-5-5: {input: 2.00, output: 10.00}
   claude-haiku-5-5:  {input: 0.10, output: 0.50}
-
-# ---- 出力形式の検査ルール（aggregate.py が使う） ----
-task:
-  max_value_chars: 50
-  # 出力の「項目名」。プロンプト内の表記と一字一句そろえること
-  items:
-    - 補助対象者
-    - 補助率と補助上限額
-    - 応募期間
-    - 応募時に提出する書類
-
-# 正答判定の基準ファイル（無ければ正答率と揺れの分類の一部は「未判定」になる）
-# ファイル名の ground_truth_ より後ろ（v2 など）が、集計結果のファイル名の末尾に付く
-ground_truth: config/ground_truth_v2.yaml
-
-# ---- プロンプト ----
-# {document} の位置に対象文書の全文が入る。
-# 意図・要求項目・項目名・出力形式・字数制限は全パターン同一。変えるのは表現だけ
-prompts:
-  P1:
-    note: 丁寧な長文（背景と目的を説明してから依頼）
-    template: |
-      お忙しいところ恐れ入ります。現在、国の補助金の公募要領を読み込み、応募を検討するにあたって要点を手早く把握できるよう、内容の整理を進めております。つきましては、以下の文書から次の4項目を抜き出していただけますでしょうか。
-      ・補助対象者
-      ・補助率と補助上限額
-      ・応募期間
-      ・応募時に提出する書類
-      出力は、上記の項目名を用いた「項目名: 値」の形式で4行としてください。それぞれの値は50字以内に収めていただき、前置きや補足は書かないようお願いいたします。
-
-      【文書】
-      {document}
-  P2:
-    note: 簡潔な命令形（1文）
-    template: |
-      以下の文書から補助対象者、補助率と補助上限額、応募期間、応募時に提出する書類の4項目を抽出し、その項目名を用いた「項目名: 値」の4行（各値50字以内、前置き・補足なし）で出力せよ。
-
-      【文書】
-      {document}
-  P3:
-    note: 4項目の提示順を入れ替え
-    template: |
-      以下の文書から次の4項目を抽出してください。
-      ・応募時に提出する書類
-      ・応募期間
-      ・補助率と補助上限額
-      ・補助対象者
-      出力は、上記の項目名を用いた「項目名: 値」の形式で4行にしてください。各値は50字以内とし、前置きや補足は書かないでください。
-
-      【文書】
-      {document}
-  P4:
-    note: カタカナ・専門用語寄りの語彙
-    template: |
-      以下のドキュメントから次の4アイテムをピックアップし、指定のフォーマットでアウトプットしてください。
-      ・補助対象者
-      ・補助率と補助上限額
-      ・応募期間
-      ・応募時に提出する書類
-      フォーマットは、上記のアイテム名をラベルとした「項目名: 値」の4ラインです。各バリューは50字以内にリミットし、イントロや補足コメントは書かないでください。
-
-      【文書】
-      {document}
-  P5:
-    note: 口語的で曖昧な言い回し
-    template: |
-      この文書からさ、補助対象者、補助率と補助上限額、応募期間、応募時に提出する書類の4つを抜き出してほしいんだよね。その項目名を使って「項目名: 値」って感じで4行にしてくれる？値はそれぞれ50字以内で、前置きとか補足とかはなしでお願い。
-
-      【文書】
-      {document}
