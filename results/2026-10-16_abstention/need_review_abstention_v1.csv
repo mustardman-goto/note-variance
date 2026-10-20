@@ -1,0 +1,8 @@
+﻿条件,試行,項目,stated_in_source,値,字数,分類,理由,誤棄権,含む棄権語・参照語（参考）,棄権の内訳,当たった forbidden_patterns,応答の形式遵守
+C0,2,1回の請求で申し込めるカット数の上限,False,文書中に記載なし,8,unclassified,,,記載なし,,,True
+C0,4,1回の請求で申し込めるカット数の上限,False,文書に記載なし,7,unclassified,,,記載なし,,,True
+C0,5,1回の請求で申し込めるカット数の上限,False,文書に記載なし,7,unclassified,,,記載なし,,,True
+C0,6,1回の請求で申し込めるカット数の上限,False,文書内に記載なし,8,unclassified,,,記載なし,,,True
+C0,8,1回の請求で申し込めるカット数の上限,False,文書に記載なし,7,unclassified,,,記載なし,,,True
+C0,14,1回の請求で申し込めるカット数の上限,False,文書に記載なし,7,unclassified,,,記載なし,,,True
+C0,18,1回の請求で申し込めるカット数の上限,False,文書に記載なし,7,unclassified,,,記載なし,,,True

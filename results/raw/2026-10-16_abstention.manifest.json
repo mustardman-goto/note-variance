@@ -1,0 +1,24 @@
+{
+  "run_id": "2026-10-16_abstention",
+  "config_path": "config/run.yaml",
+  "model_id": "claude-sonnet-5-5",
+  "models_listed": [
+    "claude-haiku-5-5",
+    "claude-sonnet-5-5",
+    "claude-opus-5-5",
+    "claude-fable-5-1",
+    "claude-opus-5",
+    "claude-sonnet-5",
+    "claude-fable-5",
+    "claude-opus-4-8",
+    "claude-opus-4-7",
+    "claude-sonnet-4-6",
+    "claude-opus-4-6",
+    "claude-opus-4-5-20251101",
+    "claude-haiku-4-5-20251001",
+    "claude-sonnet-4-5-20250929"
+  ],
+  "config_sha256": "f358c9ac40e80448068ef81e34cbafd761d546feea2b1237cb9a968e152b6bad",
+  "document_sha256": "a9a6a788b520ce8b0c490ea95ed611e2aac15d7181504a9e8185b1a680608791",
+  "started_at": "2026-10-20T23:39:26+09:00"
+}
