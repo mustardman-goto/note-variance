@@ -332,7 +332,15 @@ def main() -> None:
             w = csv.writer(f)
             w.writerow(header)
             w.writerows(to_row(x) for x in sel)
-    out(f"\nunclassified: {sum(x['category'] == 'unclassified' for x in rows)} 件（need_review_{tag}.csv）")
+    out(f"\n(8) unclassified（ルールで分類が決まらなかったもの）の件数。計 "
+        f"{sum(x['category'] == 'unclassified' for x in rows)} 件。内容は need_review_{tag}.csv")
+    unstated = [i for i in items if not gt["items"][i]["stated_in_source"]]
+    for c in conds:
+        out(f"  {c}: " + " / ".join(
+            f"{i} {frac(sum(x['category'] == 'unclassified' for x in rows if x['condition'] == c and x['item'] == i), n_resp[c])}"
+            for i in unstated))
+    out("  （記載あり項目は A/B/C/D のどれかに必ず入るので unclassified は出ない）")
+    out("")
     out("D の基準値（全条件・全試行の最頻値。※は同数1位あり）")
     for i, (m, k, tie) in base.items():
         out(f"  {i}: {m}（{k}件）{'※' if tie else ''}")
