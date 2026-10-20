@@ -50,9 +50,16 @@ def call_once(client: anthropic.Anthropic, model_id: str, model_cfg: dict, promp
     }
     if model_cfg.get("effort"):
         kwargs["output_config"] = {"effort": model_cfg["effort"]}
+    extra = {}
     if model_cfg.get("temperature") is not None:
         # SDK 1.x では temperature 引数が無いため、リクエスト本文に直接入れる
-        kwargs["extra_body"] = {"temperature": model_cfg["temperature"]}
+        extra["temperature"] = model_cfg["temperature"]
+    if model_cfg.get("thinking"):
+        # 思考の指定。null なら送らない（モデルの既定）。"between_tools" で応答前の思考をしない
+        # （claude-sonnet-5-5 は "disabled" を受け付けず、400 エラーでこの値を指定するよう返す）
+        extra["thinking"] = {"type": model_cfg["thinking"]}
+    if extra:
+        kwargs["extra_body"] = extra
     return client.messages.create(**kwargs)
 
 
@@ -71,7 +78,10 @@ def run_trial(client, model_id: str, cfg: dict, prompt: str) -> dict:
             result = {
                 "status": "ok",
                 "error": None,
+                # 集計・分類が使うのは text（最終的な本文の text ブロック）だけ。思考は入れない
                 "text": "".join(b.text for b in msg.content if b.type == "text"),
+                # 思考は分類に使わず、記録としてだけ残す（API が返した thinking ブロックの中身をそのまま連結）
+                "thinking": "".join(getattr(b, "thinking", "") or "" for b in msg.content if b.type == "thinking"),
                 "block_types": [b.type for b in msg.content],
                 "stop_reason": msg.stop_reason,
                 "model_returned": msg.model,
@@ -124,11 +134,15 @@ def main() -> None:
     ap.add_argument("--dry-run", action="store_true", help="お試し実行（別ファイルに保存）")
     ap.add_argument("--patterns", nargs="*", help="実行するパターン（省略時は全部）")
     ap.add_argument("--trials", type=int, help="1パターンあたりの回数（省略時は run.yaml の値）")
+    ap.add_argument("--thinking", help="思考の指定を上書きする（例: between_tools）。ドライランだけで使える")
     args = ap.parse_args()
-    if (args.patterns or args.trials) and not args.dry_run:
-        sys.exit("エラー: --patterns / --trials は --dry-run と一緒に使ってください。本実行の条件は run.yaml で決めます。")
+    if (args.patterns or args.trials or args.thinking) and not args.dry_run:
+        sys.exit("エラー: --patterns / --trials / --thinking は --dry-run と一緒に使ってください。"
+                 "本実行の条件は run.yaml で決めます。")
 
     cfg = load_config(args.config)
+    if args.thinking:
+        cfg["model"]["thinking"] = args.thinking
     config_sha = sha256(read_text(args.config))
     document = read_text(cfg["document"]["path"])
     document_sha = sha256(document)
@@ -166,7 +180,7 @@ def main() -> None:
     print(f"保存先: {out_path.relative_to(ROOT)}")
     print(f"予定 {len(patterns) * trials} 件 / 済み {len(done)} 件 / これから {len(todo)} 件")
     print(f"temperature: {cfg['model'].get('temperature')}  effort: {cfg['model'].get('effort')}  "
-          f"max_tokens: {cfg['model']['max_tokens']}\n")
+          f"thinking: {cfg['model'].get('thinking')}  max_tokens: {cfg['model']['max_tokens']}\n")
 
     price = price_for(cfg, model_id)
     session = {"ok": 0, "error": 0, "in": 0, "out": 0, "sec": 0.0}
@@ -186,6 +200,7 @@ def main() -> None:
             "model_requested": model_id,
             "temperature": cfg["model"].get("temperature"),
             "effort": cfg["model"].get("effort"),
+            "thinking_setting": cfg["model"].get("thinking"),   # null はモデルの既定（送っていない）
             "max_tokens": cfg["model"]["max_tokens"],
             "prompt_sha256": sha256(prompt), "document_sha256": document_sha,
             "config_sha256": config_sha,

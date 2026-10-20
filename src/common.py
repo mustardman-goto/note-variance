@@ -37,7 +37,7 @@ def expand_conditions(cfg: dict) -> dict:
     cfg["trials_per_pattern"] = cfg["trials_per_condition"]
     m = cfg["model"]
     cfg["model"] = {"pin": m.get("id"), "select_contains": m["family"], "max_tokens": cfg["max_tokens"],
-                    "temperature": cfg["temperature"], "effort": m.get("effort")}
+                    "temperature": cfg["temperature"], "effort": m.get("effort"), "thinking": m.get("thinking")}
     return cfg
 
 

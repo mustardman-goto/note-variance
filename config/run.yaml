@@ -13,10 +13,24 @@ material:
   source_html: "data/source/2026-10-16_archives_copy/copy.html"
   # 本文の切り出し方: src/extract_html.py --start-class copy --stop-id FooterLayout --skip-class ikari
 model:
-  id: null            # 起動時に /v1/models から取得して埋める。決め打ち禁止
+  id: "claude-sonnet-5-5"   # 2026-10-20 に /v1/models から取得（family を含む最新）。決め打ち禁止
+  # 記事とモデルの対応:
+  #   1本目（2026-10-07 公開）… 2026w41 より前の実行
+  #   2本目（2026-10-09 公開）… 2026w41 の2つの実行。モデルは results/raw/*.manifest.json と生ログの model_returned による
+  #     2026w41-bousai-koboyoryo        … claude-haiku-5-5
+  #     2026w41-bousai-koboyoryo-sonnet … claude-sonnet-5-5
+  # 今回は 2本目の Sonnet 側と同じ claude-sonnet-5-5。2本目の Haiku の実行とだけモデルが違う
   family: "claude-sonnet"
+  # 思考（答える前に考える）の指定。null＝送らない（モデルの既定）。"between_tools"＝応答前に思考しない
+  # （このモデルは "disabled" を受け付けない。400 エラーで between_tools を指定するよう返る）
+  # 本実行は null（思考あり）で回す（2026-10-20 に筆者が決定）。理由:
+  #   - 2026w41 の Sonnet の実行も既定のまま（思考あり）で回しており、条件が揃うため
+  #   - 既定は実際に使われる状態であり、記事の前提と合うため
+  #   - 思考なし（between_tools）で試した1件（ドライラン C1、2026-10-20 23:34）は生ログに残し、補足として扱う
+  # 思考の中身は生ログの thinking に残し、分類には使わない（分類は本文の text だけ）
+  thinking: null
 temperature: 1.0      # 1本目・2本目と同一
-max_tokens: 400
+max_tokens: 2000      # 400 ではドライラン3件すべてが思考で上限に達して本文が切れたため、2026-10-20 に変更
 trials_per_condition: 20
 items:                # この順序も固定
   - "利用請求書の提出方法"
