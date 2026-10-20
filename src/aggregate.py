@@ -37,7 +37,21 @@ def normalize(value: str) -> str:
     return s.rstrip("。.")
 
 
-def parse_response(text: str, items: list[str], max_chars: int) -> dict:
+NUMBERING = re.compile(r"^\d+\.\s*")
+
+
+def parse_response(text: str, items: list[str], max_chars: int, strip_numbering: bool = False) -> dict:
+    """strip_numbering=False が v1 の読み方（結果を見る前に決めたルール）。
+    strip_numbering=True は v1_numbered（2026-10-16_abstention の本実行の v1 集計を見たあとに追加）：
+      行頭の「数字＋. 」（例「1. 」）だけを外して値を読む。それ以外の読み方は v1 と同じ。
+      形式の判定（lines_ok / labels_ok / len_ok / format_ok）は v1 の読み方の結果をそのまま使い、
+      番号を外して読めた項目は numbered に入れる（呼び出し側で形式違反 A として数える）。"""
+    if strip_numbering:
+        v1 = parse_response(text, items, max_chars)
+        stripped = "\n".join(NUMBERING.sub("", ln.strip()) for ln in text.splitlines())
+        alt = parse_response(stripped, items, max_chars)
+        numbered = [i for i in alt["values"] if i not in v1["values"]]
+        return {**v1, "values": alt["values"], "relabeled": alt["relabeled"], "numbered": numbered}
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     values: dict[str, str] = {}
     labeled_lines = 0
@@ -76,6 +90,7 @@ def parse_response(text: str, items: list[str], max_chars: int) -> dict:
         "len_ok": len_ok,
         "format_ok": lines_ok and labels_ok and len_ok,
         "halfwidth_colon": halfwidth_colon and bool(values),
+        "numbered": [],
     }
 
 
@@ -168,7 +183,8 @@ def is_correct(value: str | None, rule: dict) -> bool:
     return not failed_reasons(value, rule)
 
 
-def load_ok_records(cfg: dict, dry_run: bool = False) -> tuple[list[dict], dict, dict]:
+def load_ok_records(cfg: dict, dry_run: bool = False,
+                    strip_numbering: bool = False) -> tuple[list[dict], dict, dict]:
     """生ログを読み、(全記録, 試行ごとの最後の記録, そのうち成功したもの) を返す。"""
     records = read_jsonl(raw_path(cfg, dry_run))
     latest: dict[tuple[str, int], dict] = {}
@@ -176,7 +192,8 @@ def load_ok_records(cfg: dict, dry_run: bool = False) -> tuple[list[dict], dict,
         latest[(r["pattern"], r["trial"])] = r
     ok = {k: r for k, r in latest.items() if r["status"] == "ok"}
     for r in ok.values():
-        r["parsed"] = parse_response(r["text"], cfg["task"]["items"], cfg["task"]["max_value_chars"])
+        r["parsed"] = parse_response(r["text"], cfg["task"]["items"], cfg["task"]["max_value_chars"],
+                                     strip_numbering)
     return records, latest, ok
 
 

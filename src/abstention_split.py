@@ -54,6 +54,20 @@ from common import ROOT, load_config, read_jsonl, raw_path, results_dir, setup_s
 LINES: list[str] = []
 MISSING = "(欠落)"
 
+# --strip-numbering（v1_numbered）の出力ファイルの冒頭に書く経緯
+NUMBERED_NOTE = [
+    "# この集計（v1_numbered）は、本実行の結果を見たあとに追加したルールによるもの",
+    "# 気づいた時点: 2026-10-20、本実行（23:39～23:44）のあと、v1 集計の出力を確認したとき",
+    "# 経緯: 60件中15件（C0 6 / C1 3 / C2 6）が各行の先頭に「1. 」のような番号を付けていた。",
+    "#   v1 の読み方は「行頭が項目名」を前提にしており、これらの応答は値が書かれていても全6項目が「値なし」になる",
+    "#   （記載あり項目は A、記載なし項目は欠落）。値の中身を集計に入れるため、この版を追加した",
+    "# 追加したルール: 行頭の「数字＋. 」だけを外して値を読む。それ以外の正規化・判定ルールは v1 と同一",
+    "#   形式違反（A）とフォーマット遵守率は v1 と同じ扱い。番号付きの行の項目は形式違反 A のまま数える",
+    "#   （記載なし項目には A が無いので、番号を外して読んだ値を 棄権／でっち上げ／unclassified に分類する）",
+    "# v1 を残す理由: v1 は結果を見る前に決めたルールによる集計で、こちらは結果を見たあとのルール追加。",
+    "#   事前に決めたルールの結果を消さず、両方を並べて残す（v1 のファイルは変更していない）",
+]
+
 
 def out(line: str = "") -> None:
     print(line)
@@ -124,6 +138,9 @@ def classify(rs: list[dict], items: list[str], gt: dict, max_chars: int) -> list
             if rule["stated_in_source"]:
                 if v is None:
                     cat, row["reasons"] = "A", ["値なし"]
+                elif i in pr.get("numbered", []):
+                    # v1_numbered だけで起きる。行頭の番号を外して値を読めた項目も、形式違反 A のまま数える
+                    cat, row["reasons"] = "A", ["行頭に番号（番号を外して値を読んだ）"]
                 elif i in pr["relabeled"]:
                     cat, row["reasons"] = "A", [f"ラベルが「{pr['relabeled'][i]}」"]
                 elif not 1 <= len(v) <= max_chars:
@@ -209,6 +226,8 @@ def main() -> None:
     ap.add_argument("--config", default="config/run.yaml", help="設定ファイル（省略時は config/run.yaml）")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--ground-truth", help="正答基準ファイル（省略時は run.yaml の ground_truth）")
+    ap.add_argument("--strip-numbering", action="store_true",
+                    help="行頭の「数字＋. 」を外して値を読む版（v1_numbered）。結果を見たあとに追加したルール")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -222,17 +241,26 @@ def main() -> None:
         sys.exit(f"エラー: {gt_path} が confirmed: true になっていません。")
     stem = gt_path.replace("\\", "/").rsplit("/", 1)[-1].rsplit(".", 1)[0]
     tag = stem.split("ground_truth_", 1)[1] if stem.startswith("ground_truth_") else stem
+    if args.strip_numbering:
+        tag += "_numbered"   # v1 のファイルを上書きしないよう、別名で出す
     out_dir = results_dir(cfg) / ("dryrun" if args.dry_run else "")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     records = read_jsonl(raw_path(cfg, args.dry_run))
-    _, latest, ok = load_ok_records(cfg, args.dry_run)
+    _, latest, ok = load_ok_records(cfg, args.dry_run, args.strip_numbering)
     rs = [ok[k] for k in sorted(ok, key=lambda k: (conds.index(k[0]), k[1]))]
     if not rs:
         sys.exit("成功した試行がありません。")
     rows, base = classify(rs, items, gt, max_chars)
     n_resp = {c: sum(r["pattern"] == c for r in rs) for c in conds}
 
+    if args.strip_numbering:
+        for line in NUMBERED_NOTE:
+            out(line)
+        n_num = sum(bool(r["parsed"]["numbered"]) for r in rs)
+        out(f"# 番号を外して値を読んだ応答: {n_num} 件 / " + " / ".join(
+            f"{c} {sum(bool(r['parsed']['numbered']) for r in rs if r['pattern'] == c)}" for c in conds))
+        out("")
     out("=" * 72)
     out(f"variance_split  run_id: {cfg['run_id']}" + ("  ※ドライラン" if args.dry_run else ""))
     out("=" * 72)
