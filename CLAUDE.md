@@ -80,7 +80,8 @@
   （参照先を示す語。含めば abstain_reference）、`forbidden_patterns`（正規表現）を持つ。
   確定した7つの判断はファイル冒頭のコメントにある
 - `results/raw/<run_id>.manifest.json` … 本実行の開始時に選んだモデルIDと設定のハッシュ
-- `results/`（Haiku）、`results/2026w41-sonnet/`（Sonnet）… 集計結果。出力先は設定の `output_dir`
+- `results/`（2026w41 の Haiku）、`results/2026w41-sonnet/`（2026w41 の Sonnet）、
+  `results/2026-10-16_abstention/`（2026-10-16_abstention）… 集計結果。出力先は設定の `output_dir`
 - `prediction.md` … 実行前に書いた予想
 
 ### 正答基準の版
@@ -116,7 +117,7 @@
 集計は `aggregate.py`・`compare_criteria.py`・`variance_split.py`、出力は `results/` と `results/2026w41-sonnet/`。
 
 - **フォーマット遵守**：空行を除いて4行、4行すべてが指定の項目名＋コロン、各値が1～50字
-- **揺れ（2と3で共通の尺度）**：出力を2つ取り出したとき値が一致するペアの割合。
+- **揺れ（出力の揺れと入力の揺れで共通の尺度）**：出力を2つ取り出したとき値が一致するペアの割合。
   同一パターン内のペア＝出力の揺れ、異なるパターン間のペア＝入力の揺れ。
   「原文」は一字一句、「正規化後」は NFKC（全角/半角）・空白・文末句点の違いを無視
 - **ラベル違反の扱い**：項目名だけ書き換えられた行（指定外ラベル1行・欠けた項目1つ）は、
@@ -180,6 +181,8 @@
 - pdfplumber は表の行順を崩すことがある。抽出テキストは手で直さず、そのまま使う
 - 設定は `config/run.yaml` ではなく Git の履歴（c3fb341 の `config/run.yaml`）と `config/run_2026w41-sonnet.yaml` にある。
   いまの `config/run.yaml` は 2026-10-16_abstention の設定
+- `config/run.yaml` のヘッダが指す 755ff22 は、このリポジトリを切り出す前のハッシュで、このリポジトリには存在しない。
+  対応するのは c3fb341。`run.yaml` は manifest の `config_sha256` との一致を保つため編集していない
 - max_tokens は 16000
 
 ### 2026-10-16_abstention だけに当てはまるもの
