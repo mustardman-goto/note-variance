@@ -124,7 +124,7 @@
 - モデルID、temperature、max_tokens、思考の設定（下の表）
 - 条件ごとの試行回数
 - 安全分類による拒否時の代替モデルへの切り替え（fallbacks）は使っていない
-- 本実行に使った `config/run.yaml` の sha256 は `f358c9ac…6bad` で、manifest の config_sha256 と一致する。このファイルの最後の変更は b6d8ce8（本実行前）
+- 本実行に使った `config/run.yaml` の sha256 は `f358c9ac…6bad` で、manifest の config_sha256 と一致する。このファイルの最後の変更は f4f1690（切り出し前 b6d8ce8）（本実行前）
 
 ### 実行条件と実績
 
