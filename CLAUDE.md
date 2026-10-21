@@ -6,10 +6,10 @@
 
 ## 再開の1コマンド
 
-作業フォルダは `C:\Users\fende\fde-practice\note-variance`。PowerShell で：
+作業フォルダは、このリポジトリのルート。そこで PowerShell を開いて：
 
 ```powershell
-cd $HOME\fde-practice\note-variance; .\.venv\Scripts\python.exe src\run.py; .\.venv\Scripts\python.exe src\aggregate.py
+.\.venv\Scripts\python.exe src\run.py; .\.venv\Scripts\python.exe src\aggregate.py
 ```
 
 途中で落ちても同じコマンドで続きから再開する（成功済みの試行は飛ばす）。
@@ -18,7 +18,7 @@ cd $HOME\fde-practice\note-variance; .\.venv\Scripts\python.exe src\run.py; .\.v
 例（Sonnet の実行を再集計）：
 
 ```powershell
-cd $HOME\fde-practice\note-variance; .\.venv\Scripts\python.exe src\aggregate.py --config config/run_2026w41-sonnet.yaml
+.\.venv\Scripts\python.exe src\aggregate.py --config config/run_2026w41-sonnet.yaml
 ```
 
 ## 次週分を回す手順
